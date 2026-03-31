@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Granja Monitor</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body style="font-family: Arial; text-align:center; background:#0f172a; color:white; margin:0; padding:20px;">
+
+<h1>🐔 Granja Monitor</h1>
+
+<!-- CARD TEMPERATURA -->
+<div style="margin: 40px auto; padding: 20px; width: 200px; background:#1e293b; border-radius:20px;">
+  <div id="temp" style="font-size:60px;">--</div>
+  <div style="margin-top:10px; font-size:18px;">Temperatura em tempo real</div>
+</div>
+
+<!-- STATUS CONEXÃO -->
+<div id="status" style="margin-bottom:20px; font-size:16px;">Conectando...</div>
+
+<!-- CARD GRÁFICO -->
+<div style="margin: 0 auto; width: 90%; max-width: 400px; background:#1e293b; padding:20px; border-radius:15px;">
+  <canvas id="grafico"></canvas>
+</div>
+
+<script>
+  // 🔌 CONEXÃO MQTT
+  const client = mqtt.connect('wss://g73d1422.ala.us-east-1.emqxsl.com:8084/mqtt', {
+    username: 'neutron_automacao',
+    password: '836822ca'
+  });
+
+  // 📊 DADOS DO GRÁFICO
+  let dados = [];
+  let labels = [];
+  let buffer = [];
+
+  const ctx = document.getElementById('grafico').getContext('2d');
+
+  const grafico = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Temperatura (°C)',
+        data: dados,
+        borderWidth: 2,
+        borderColor: '#facc15',
+        backgroundColor: 'rgba(250,204,21,0.2)',
+        tension: 0.4,
+        pointRadius: 3
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { ticks: { color: 'white' } },
+        y: { ticks: { color: 'white' }, suggestedMin: 0, suggestedMax: 50 }
+      },
+      plugins: {
+        legend: { labels: { color: 'white' } }
+      }
+    }
+  });
+
+  // 🔗 EVENTOS MQTT
+  client.on('connect', () => {
+    document.getElementById('status').innerText = 'Conectado ✅';
+    client.subscribe('topico_01');
+  });
+
+  client.on('close', () => {
+    document.getElementById('status').innerText = 'Desconectado ❌';
+  });
+
+  client.on('error', (err) => {
+    document.getElementById('status').innerText = 'Erro ⚠️ ' + err.message;
+  });
+
+  // 📩 RECEBE DADOS
+  client.on('message', (topic, message) => {
+    let valor = parseFloat(message.toString());
+    buffer.push({ valor, hora: new Date().toLocaleTimeString() });
+  });
+
+  // ⏱ ATUALIZAÇÃO SUAVE DO GRÁFICO A CADA 1 SEGUNDO
+  setInterval(() => {
+    if(buffer.length > 0){
+      let item = buffer.shift();
+      // Atualiza número grande
+      document.getElementById("temp").innerText = item.valor + " °C";
+
+      // Atualiza gráfico
+      dados.push(item.valor);
+      labels.push(item.hora);
+
+      if(dados.length > 20){
+        dados.shift();
+        labels.shift();
+      }
+
+      grafico.update();
+    }
+  }, 1000);
+
+</script>
+
+</body>
+</html>
