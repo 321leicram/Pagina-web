@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Granja Monitor Mobile</title>
+
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body {
+  margin: 0;
+  font-family: Arial;
+  background: linear-gradient(180deg, #dbeafe, #bfdbfe);
+  color: #0f172a;
+}
+
+/* TOPO */
+.topo {
+  text-align: center;
+  padding: 15px;
+  font-size: 20px;
+  font-weight: bold;
+}
+
+/* STATUS */
+.status {
+  text-align: center;
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+/* CARD PADRÃO */
+.card {
+  background: white;
+  border-radius: 20px;
+  padding: 15px;
+  margin: 10px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+}
+
+/* TEMPERATURA */
+.temp {
+  font-size: 60px;
+  text-align: center;
+  font-weight: bold;
+}
+
+/* DATA HORA */
+.info {
+  text-align: center;
+  font-size: 16px;
+}
+
+/* GRÁFICO */
+.grafico-box {
+  height: 250px;
+}
+
+/* SETORES */
+.setor-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+/* CORES */
+.verde { background: #16a34a; color: white; }
+.amarelo { background: #f59e0b; color: white; }
+.vermelho { background: #dc2626; color: white; }
+
+</style>
+</head>
+
+<body>
+
+<div class="topo">🐔 Granja Monitor</div>
+
+<div id="status" class="status">Conectando...</div>
+
+<!-- TEMPERATURA -->
+<div id="cardTemp" class="card">
+  <div style="text-align:center;">Temperatura Geral</div>
+  <div id="temp" class="temp">--</div>
+</div>
+
+<!-- DATA E HORA -->
+<div class="card info">
+  <div id="data"></div>
+  <div id="hora"></div>
+</div>
+
+<!-- GRÁFICO -->
+<div class="card grafico-box">
+  <canvas id="grafico"></canvas>
+</div>
+
+<!-- SETORES -->
+<div id="g1" class="card setor-card">
+  <div>Setor 01</div>
+  <div id="t1">--</div>
+</div>
+
+<div id="g2" class="card setor-card">
+  <div>Setor 02</div>
+  <div id="t2">--</div>
+</div>
+
+<div id="g3" class="card setor-card">
+  <div>Setor 03</div>
+  <div id="t3">--</div>
+</div>
+
+<div id="g4" class="card setor-card">
+  <div>Setor 04</div>
+  <div id="t4">--</div>
+</div>
+
+<script>
+
+// RELÓGIO
+setInterval(() => {
+  const agora = new Date();
+  document.getElementById("data").innerText = agora.toLocaleDateString();
+  document.getElementById("hora").innerText = agora.toLocaleTimeString();
+}, 1000);
+
+// MQTT
+const client = mqtt.connect('wss://g73d1422.ala.us-east-1.emqxsl.com:8084/mqtt', {
+  username: 'neutron_automacao',
+  password: '836822ca'
+});
+
+// GRÁFICO
+let dados = [];
+let labels = [];
+let buffer = [];
+
+const ctx = document.getElementById('grafico').getContext('2d');
+
+const grafico = new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: labels,
+    datasets: [{
+      label: 'Temperatura',
+      data: dados,
+      borderColor: '#2563eb',
+      backgroundColor: 'rgba(37,99,235,0.2)',
+      tension: 0.4,
+      fill: true
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false
+  }
+});
+
+// CORES
+function cor(card, temp){
+  card.classList.remove("verde","amarelo","vermelho");
+
+  if(temp < 28) card.classList.add("verde");
+  else if(temp < 32) card.classList.add("amarelo");
+  else card.classList.add("vermelho");
+}
+
+// MQTT
+client.on('connect', () => {
+  document.getElementById('status').innerText = 'Conectado ✅';
+
+  client.subscribe('topico_01');
+  client.subscribe('topico_02');
+  client.subscribe('topico_03');
+  client.subscribe('topico_04');
+  client.subscribe('topico_05');
+});
+
+client.on('close', () => {
+  document.getElementById('status').innerText = 'Desconectado ❌';
+});
+
+client.on('error', () => {
+  document.getElementById('status').innerText = 'Erro ⚠️';
+});
+
+client.on('message', (topic, message) => {
+
+  let valor = parseFloat(message.toString());
+
+  if(topic === 'topico_01'){
+    buffer.push({ valor, hora: new Date().toLocaleTimeString() });
+    document.getElementById("temp").innerText = valor + " °C";
+    cor(document.getElementById("cardTemp"), valor);
+  }
+
+  if(topic === 'topico_02'){
+    document.getElementById("t1").innerText = valor + " °C";
+    cor(document.getElementById("g1"), valor);
+  }
+
+  if(topic === 'topico_03'){
+    document.getElementById("t2").innerText = valor + " °C";
+    cor(document.getElementById("g2"), valor);
+  }
+
+  if(topic === 'topico_04'){
+    document.getElementById("t3").innerText = valor + " °C";
+    cor(document.getElementById("g3"), valor);
+  }
+
+  if(topic === 'topico_05'){
+    document.getElementById("t4").innerText = valor + " °C";
+    cor(document.getElementById("g4"), valor);
+  }
+
+});
+
+// LOOP GRÁFICO
+setInterval(() => {
+  if(buffer.length > 0){
+    let item = buffer.shift();
+
+    dados.push(item.valor);
+    labels.push(item.hora);
+
+    if(dados.length > 20){
+      dados.shift();
+      labels.shift();
+    }
+
+    grafico.update();
+  }
+}, 1000);
+
+</script>
+
+</body>
+</html>
